@@ -29,15 +29,13 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
-      # Optional: Add TTL for automatic cleanup (expire conversations after 7 days)
-      # Note: You'd need to add a ttl attribute in your save logic (epoch timestamp)
 
   GraphHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Policies:
-        # Allow the function to interact with DynamoDB
+        # Allow the function to interact with DynamoDB (for checkpointer)
         - DynamoDBReadPolicy:
             TableName: !Ref ConversationsTable
         - DynamoDBWritePolicy:

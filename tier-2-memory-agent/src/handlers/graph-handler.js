@@ -1,8 +1,8 @@
-const { StateGraph, END } = require("@langchain/langgraph");
+const { StateGraph, END, START } = require("@langchain/langgraph");
 const { Calculator } = require("@langchain/community/tools/calculator");
 const { DuckDuckGoSearchResults } = require("@langchain/community/tools/ddg_search");
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBPutItemCommand, DynamoDBGetItemCommand, DynamoDBUpdateItemCommand } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBSaver } = require("@langchain/langgraph-checkpoint/dynamodb");
 
 // Configuration
 const TABLE_NAME = process.env.CONVERSATION_TABLE || "LangGraphConversations";
@@ -10,79 +10,29 @@ const TABLE_NAME = process.env.CONVERSATION_TABLE || "LangGraphConversations";
 // Initialize AWS clients
 const dynamoDbClient = new DynamoDBClient({});
 
+// Initialize the DynamoDB checkpointer
+const checkpointer = new DynamoDBSaver({
+  client: dynamoDbClient,
+  tableName: TABLE_NAME,
+});
+
 // Define the state for our agent with memory
 const agentState = {
-  // Input from Lambda event
-  input: "",
-  // Conversation ID for memory
-  conversationId: "",
-  // Output from the agent
-  output: "",
-  // For debugging - we can include intermediate steps
-  intermediateSteps: [],
+  channels: {
+    input: { value: "", update: (a, b) => b },
+    conversationId: { value: "", update: (a, b) => b },
+    output: { value: "", update: (a, b) => b },
+    history: { value: [], update: (a, b) => b },
+    intermediateSteps: { value: [], update: (a, b) => b }
+  }
 };
 
-// Helper function to get conversation history from DynamoDB
-async function getConversationHistory(conversationId) {
-  if (!conversationId) return [];
-
-  try {
-    const command = new DynamoDBGetItemCommand({
-      TableName: TABLE_NAME,
-      Key: { conversationId: { S: conversationId } },
-    });
-
-    const response = await dynamoDbClient.send(command);
-    if (response.Item && response.Item.history) {
-      // Assuming we store history as a JSON string in the DynamoDB item
-      return JSON.parse(response.Item.history.S);
-    }
-    return [];
-  } catch (error) {
-    console.warn("Could not retrieve conversation history:", error);
-    return [];
-  }
-}
-
-// Helper function to save conversation history to DynamoDB
-async function saveConversationHistory(conversationId, history) {
-  if (!conversationId) return;
-
-  try {
-    const command = new DynamoDBPutItemCommand({
-      TableName: TABLE_NAME,
-      Item: {
-        conversationId: { S: conversationId },
-        history: { S: JSON.stringify(history) },
-        updatedAt: { S: new Date().toISOString() },
-      },
-    });
-
-    await dynamoDbClient.send(command);
-  } catch (error) {
-    console.error("Could not save conversation history:", error);
-  }
-}
-
-// Node 1: Load conversation history
-async function loadHistoryNode(state) {
-  let history = [];
-  if (state.conversationId) {
-    history = await getConversationHistory(state.conversationId);
-  }
-  return { ...state, history };
-}
-
+// Node 1: Load conversation history (handled automatically by checkpointer)
 // Node 2: Agent reasoning with tools
 async function agentNode(state) {
   // Initialize tools
   const calculator = new Calculator();
   const search = new DuckDuckGoSearchResults();
-
-  // We'll implement a simple ReAct-like agent:
-  // If the input looks like a math question, use calculator
-  // If it looks like a question requiring current info, use search
-  // Otherwise, just respond directly
 
   let output = "";
   let toolUsed = "";
@@ -127,27 +77,34 @@ async function agentNode(state) {
   };
 }
 
-// Node 3: Save conversation history
+// Node 3: Save conversation history (handled automatically by checkpointer)
 async function saveHistoryNode(state) {
-  await saveConversationHistory(state.conversationId, state.history);
-  return state; // Just pass through after saving
+  // The checkpointer automatically saves state after each node
+  // This node is a no-op but kept for clarity in the graph
+  return state;
 }
 
-// Create the StateGraph
-const workflow = new StateGraph(agentState)
-  // Add nodes
-  .addNode("loadHistory", loadHistoryNode)
+// Create the StateGraph with checkpointer
+const workflow = new StateGraph({
+  channels: {
+    input: { value: "", update: (a, b) => b },
+    conversationId: { value: "", update: (a, b) => b },
+    output: { value: "", update: (a, b) => b },
+    history: { value: [], update: (a, b) => b },
+    intermediateSteps: { value: [], update: (a, b) => b }
+  }
+})
+  // The checkpointer automatically handles loading/saving state
   .addNode("agent", agentNode)
   .addNode("saveHistory", saveHistoryNode)
-  // Set entry point
-  .setEntryPoint("loadHistory")
-  // Add edges
-  .addEdge("loadHistory", "agent")
+  .addEdge(START, "agent")
   .addEdge("agent", "saveHistory")
   .addEdge("saveHistory", END);
 
-// Compile the graph into a runnable agent
-const agent = workflow.compile();
+// Compile the graph with checkpointer for automatic persistence
+const agent = workflow.compile({
+  checkpointer
+});
 
 /**
  * Lambda handler function
@@ -182,13 +139,20 @@ exports.handler = async (event, context) => {
     }
 
     // Run the agent with the input and conversationId
+    // The checkpointer will automatically load/save state based on conversationId
+    const config = {
+      configurable: {
+        thread_id: conversationId,
+      },
+    };
+
     const result = await agent.invoke({
       input: input,
       conversationId: conversationId,
       output: "",
       history: [],
       intermediateSteps: []
-    });
+    }, config);
 
     // Return successful response
     return {

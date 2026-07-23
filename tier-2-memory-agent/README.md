@@ -48,15 +48,15 @@ langgraph-lambda-starter-tier2/
 
 ## How It Works
 
-1. **LangGraph Agent**: The agent uses a StateGraph with three nodes:
-   - `loadHistory`: Retrieves conversation history from DynamoDB
+1. **LangGraph Agent**: The agent uses a StateGraph with two main nodes:
    - `agent`: Processes input using tools (Calculator for math, DuckDuckGo Search for questions)
-   - `saveHistory`: Saves updated conversation history back to DynamoDB
+   - Automatic persistence handled by **DynamoDBSaver checkpointer**
 
-2. **Memory Management**: Conversation history is stored in DynamoDB with:
-   - `conversationId` as the primary key
-   - History stored as a JSON string
-   - Automatic cleanup via TTL (optional)
+2. **Memory Management**: Conversation state is automatically persisted using LangGraph's **DynamoDBSaver checkpointer**:
+   - `conversationId` serves as the thread ID for checkpointing
+   - Full state (input, output, history, intermediate steps) automatically saved after each node
+   - Automatic loading on subsequent invocations with same `conversationId`
+   - TTL-based cleanup (7 days) via DynamoDB TTL
 
 3. **Tool Selection**: Simple heuristic-based routing:
    - Mathematical expressions → Calculator
