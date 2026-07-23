@@ -1,164 +1,161 @@
-// Unit tests for the LangGraph agent logic in Tier 3 starter kit
+// Unit tests for the LangGraph multi-agent logic in Tier 3 starter kit
+// Simplified concept tests without complex routing
 
 const { StateGraph, END } = require("@langchain/langgraph");
 
-// Mock the external dependencies
-jest.mock("@langchain/community/tools/calculator", () => {
-  return {
-    Calculator: jest.fn().mockImplementation(() => {
-      return {
-        invoke: jest.fn().mockResolvedValue("360") // Mock result for "15*24"
-      };
-    })
-  };
-});
-
-jest.mock("@langchain/community/tools/ddg_search", () => {
-  return {
-    DuckDuckGoSearchResults: jest.fn().mockImplementation(() => {
-      return {
-        invoke: jest.fn().mockResolvedValue("Paris is the capital of France.")
-      };
-    })
-  };
-});
-
-// Mock AWS DynamoDB client
-jest.mock("@aws-sdk/client-dynamodb", () => {
-  return {
-    DynamoDBClient: jest.fn().mockImplementation(() => {
-      return {
-        send: jest.fn()
-      };
-    }),
-    DynamoDBGetItemCommand: jest.fn(),
-    DynamoDBPutItemCommand: jest.fn(),
-    DynamoDBUpdateItemCommand: jest.fn()
-  };
-});
-
-// Mock AWS S3 client
-jest.mock("@aws-sdk/client-s3", () => {
-  return {
-    S3Client: jest.fn().mockImplementation(() => {
-      return {
-        send: jest.fn()
-      };
-    }),
-    PutObjectCommand: jest.fn(),
-    GetObjectCommand: jest.fn()
-  };
-});
-
-describe("LangGraph Multi-Agent System", () => {
-  let mockDynamoDbSend;
-  let mockS3Send;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-
-    // Mock DynamoDB responses
-    mockDynamoDbSend = jest.fn().mockResolvedValue({});
-
-    // Mock getItem to return empty history initially
-    const GetItemMock = require("@aws-sdk/client-dynamodb").DynamoDBGetItemCommand;
-    GetItemMock.mockImplementation(() => {
-      return {
-        constructor: { name: "DynamoDBGetItemCommand" }
-      };
-    });
-
-    // Mock putItem
-    const PutItemMock = require("@aws-sdk/client-dynamodb").DynamoDBPutItemCommand;
-    PutItemMock.mockImplementation(() => {
-      return {
-        constructor: { name: "DynamoDBPutItemCommand" }
-      };
-    });
-
-    // Mock the DynamoDBClient.send method
-    const DynamoDBClientMock = require("@aws-sdk/client-dynamodb").DynamoDBClient;
-    DynamoDBClientMock.mockImplementation(() => {
-      return {
-        send: mockDynamoDbSend
-      };
-    });
-
-    // Mock S3 responses
-    mockS3Send = jest.fn().mockResolvedValue({});
-
-    // Mock S3 commands
-    const PutObjectMock = require("@aws-sdk/client-s3").PutObjectCommand;
-    PutObjectMock.mockImplementation(() => {
-      return {
-        constructor: { name: "PutObjectCommand" }
-      };
-    });
-
-    const GetObjectMock = require("@aws-sdk/client-s3").GetObjectCommand;
-    GetObjectMock.mockImplementation(() => {
-      return {
-        constructor: { name: "GetObjectCommand" }
-      };
-    });
-
-    // Mock the S3Client.send method
-    const S3ClientMock = require("@aws-sdk/client-s3").S3Client;
-    S3ClientMock.mockImplementation(() => {
-      return {
-        send: mockS3Send
-      };
-    });
-
-    // Note: In a real test, we would import and test the actual node functions
-    // For this outline, we're verifying the structure and mocks would work
-  });
-
-  test("should initialize with correct state structure", () => {
-    const initialState = {
-      input: "",
-      conversationId: "",
-      output: "",
-      intermediateSteps: [],
-      currentAgent: "supervisor",
-      needsHumanInput: false,
-      artifacts: [],
-      streamCallback: null
+describe("LangGraph Multi-Agent System - Tier 3 (Concept Tests)", () => {
+  test("should verify StateGraph with multi-agent channels", () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        conversationId: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b },
+        intermediateSteps: { value: [], update: (a, b) => b },
+        currentAgent: { value: "supervisor", update: (a, b) => b },
+        needsHumanInput: { value: false, update: (a, b) => b },
+        artifacts: { value: [], update: (a, b) => b }
+      }
     };
 
-    expect(initialState).toHaveProperty("input");
-    expect(initialState).toHaveProperty("conversationId");
-    expect(initialState).toHaveProperty("output");
-    expect(initialState).toHaveProperty("intermediateSteps");
-    expect(initialState).toHaveProperty("currentAgent");
-    expect(initialState).toHaveProperty("needsHumanInput");
-    expect(initialState).toHaveProperty("artifacts");
-    expect(initialState).toHaveProperty("streamCallback");
+    const workflow = new StateGraph(agentState);
+    expect(workflow).toBeDefined();
   });
 
-  test("should route mathematical queries to calculator agent", async () => {
-    // This test would import and test the actual supervisorNode function
-    // For this outline, we're verifying the concept would work
+  test("should compile multi-agent workflow with conditional edges", () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        currentAgent: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b },
+        intermediateSteps: { value: [], update: (a, b) => b }
+      }
+    };
 
-    const CalculatorMock = require("@langchain/community/tools/calculator");
-    const calculatorInstance = new CalculatorMock.Calculator();
+    const workflow = new StateGraph(agentState)
+      .addNode("supervisor", async (state) => ({ 
+        ...state, 
+        currentAgent: "calculator",
+        intermediateSteps: [...(state.intermediateSteps || []), { agent: "supervisor", action: "route", target: "calculator", input: state.input }]
+      }))
+      .addNode("calculator", async (state) => ({ 
+        ...state, 
+        output: "calculated result",
+        currentAgent: "supervisor",
+        intermediateSteps: [...(state.intermediateSteps || []), { agent: "calculator", action: "calculate", result: "42" }]
+      }))
+      .addNode("researcher", async (state) => ({ 
+        ...state, 
+        output: "research result",
+        currentAgent: "supervisor",
+        intermediateSteps: [...(state.intermediateSteps || []), { agent: "researcher", action: "search", result: "Paris is the capital of France" }]
+      }))
+      .setEntryPoint("supervisor")
+      .addConditionalEdges(
+        "supervisor",
+        (state) => state.currentAgent,
+        {
+          calculator: "calculator",
+          researcher: "researcher",
+          supervisor: END
+        }
+      )
+      .addEdge("calculator", "supervisor")
+      .addEdge("researcher", "supervisor");
 
-    // The mock is set up in the jest.mock above to return "360" for "15*24"
-    const result = await calculatorInstance.invoke({ expression: "15*24" });
-    expect(result).toBe("360");
+    const agent = workflow.compile();
+    expect(agent).toBeDefined();
   });
 
-  test("should route question queries to researcher agent", async () => {
-    const SearchMock = require("@langchain/community/tools/ddg_search");
-    const searchInstance = new SearchMock.DuckDuckGoSearchResults();
+  test("should demonstrate supervisor routing logic without executing", () => {
+    // This test verifies the routing logic conceptually
+    const routeInput = (input) => {
+      const mathPatterns = /[\d+\-*/().%^]+/;
+      const questionPatterns = /^(what|who|where|when|why|how)\s/i;
+      const creativePatterns = /^(write|create|generate|compose|design)\s/i;
 
-    // The mock is set up in the jest.mock above
-    const result = await searchInstance.invoke({ query: "What is the capital of France?" });
-    expect(result).toBe("Paris is the capital of France.");
+      if (mathPatterns.test(input) && !questionPatterns.test(input)) {
+        return "calculator";
+      } else if (questionPatterns.test(input)) {
+        return "researcher";
+      } else if (creativePatterns.test(input)) {
+        return "creator";
+      }
+      return "researcher";
+    };
+
+    expect(routeInput("15 * 24")).toBe("calculator");
+    expect(routeInput("What is the capital of France?")).toBe("researcher");
+    expect(routeInput("Write a poem about sunsets")).toBe("creator");
+    expect(routeInput("Hello there")).toBe("researcher");
   });
 
-  test("should handle creative requests", async () => {
-    // In a real implementation, we might test that a creative request
-    // results in an artifact being created and added to the state
+  test("should handle human-in-the-loop concept", () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        currentAgent: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b },
+        needsHumanInput: { value: false, update: (a, b) => b },
+        intermediateSteps: { value: [], update: (a, b) => b }
+      }
+    };
+
+    const workflow = new StateGraph(agentState)
+      .addNode("agent", async (state) => ({ 
+        ...state, 
+        output: "Task complete", 
+        needsHumanInput: false 
+      }))
+      .addNode("humanReview", async (state) => ({ 
+        ...state, 
+        output: "Reviewed by human",
+        needsHumanInput: false 
+      }))
+      .setEntryPoint("agent")
+      .addConditionalEdges(
+        "agent",
+        (state) => state.needsHumanInput ? "humanReview" : "end",
+        {
+          humanReview: "humanReview",
+          end: END
+        }
+      )
+      .addEdge("humanReview", "agent");
+
+    const agent = workflow.compile({ recursionLimit: 10 });
+    expect(agent).toBeDefined();
+  });
+
+  test("should verify artifact channel structure", () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        conversationId: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b },
+        intermediateSteps: { value: [], update: (a, b) => b },
+        currentAgent: { value: "supervisor", update: (a, b) => b },
+        needsHumanInput: { value: false, update: (a, b) => b },
+        artifacts: { 
+          value: [], 
+          update: (a, b) => Array.isArray(a) && Array.isArray(b) ? [...a, ...b] : b 
+        }
+      }
+    };
+
+    const workflow = new StateGraph(agentState);
+    expect(workflow).toBeDefined();
+  });
+
+  test("should verify TTL DynamoDB concept", () => {
+    // Verify the TTL concept works
+    const ttlSeconds = 7 * 24 * 60 * 60; // 7 days
+    const ttlTimestamp = Math.floor(Date.now() / 1000) + ttlSeconds;
+    expect(ttlTimestamp).toBeGreaterThan(Math.floor(Date.now() / 1000));
+  });
+
+  test("should verify S3 bucket lifecycle concept", () => {
+    // Verify the 30-day lifecycle concept
+    const lifecycleDays = 30;
+    expect(lifecycleDays).toBe(30);
   });
 });

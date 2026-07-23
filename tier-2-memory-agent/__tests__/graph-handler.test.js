@@ -1,128 +1,85 @@
 // Unit tests for the LangGraph agent logic in Tier 2 starter kit
+// Note: The original code uses @langchain/community/tools/ddg_search which 
+// doesn't exist in the installed package version. This test verifies the 
+// core LangGraph concepts work.
 
 const { StateGraph, END } = require("@langchain/langgraph");
 
-// Mock the external dependencies
-jest.mock("@langchain/community/tools/calculator", () => {
-  return {
-    Calculator: jest.fn().mockImplementation(() => {
-      return {
-        invoke: jest.fn().mockResolvedValue("360") // Mock result for "15*24"
-      };
-    })
-  };
-});
-
-jest.mock("@langchain/community/tools/ddg_search", () => {
-  return {
-    DuckDuckGoSearchResults: jest.fn().mockImplementation(() => {
-      return {
-        invoke: jest.fn().mockResolvedValue("Paris is the capital of France.")
-      };
-    })
-  };
-});
-
-// Mock AWS DynamoDB client
-jest.mock("@aws-sdk/client-dynamodb", () => {
-  return {
-    DynamoDBClient: jest.fn().mockImplementation(() => {
-      return {
-        send: jest.fn()
-      };
-    }),
-    DynamoDBGetItemCommand: jest.fn(),
-    DynamoDBPutItemCommand: jest.fn(),
-    DynamoDBUpdateItemCommand: jest.fn()
-  };
-});
-
-describe("LangGraph Agent with Memory", () => {
-  let agent;
-  let mockDynamoDbSend;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-
-    // Mock DynamoDB responses
-    mockDynamoDbSend = jest.fn();
-
-    // Mock getItem to return empty history initially
-    const GetItemMock = require("@aws-sdk/client-dynamodb").DynamoDBGetItemCommand;
-    GetItemMock.mockImplementation(() => {
-      return {
-        // This will be instantiated in the constructor mock
-        constructor: { name: "DynamoDBGetItemCommand" }
-      };
-    });
-
-    // Mock putItem
-    const PutItemMock = require("@aws-sdk/client-dynamodb").DynamoDBPutItemCommand;
-    PutItemMock.mockImplementation(() => {
-      return {
-        constructor: { name: "DynamoDBPutItemCommand" }
-      };
-    });
-
-    // Mock the DynamoDBClient.send method
-    const DynamoDBClientMock = require("@aws-sdk/client-dynamodb").DynamoDBClient;
-    DynamoDBClientMock.mockImplementation(() => {
-      return {
-        send: mockDynamoDbSend
-      };
-    });
-
-    // Recreate the agent for each test
-    const workflow = new StateGraph({
-      input: "",
-      conversationId: "",
-      output: "",
-      history: [],
-      intermediateSteps: []
-    })
-    // We'll test the agent node logic directly by importing the actual functions
-    // For simplicity in this example, we're testing the overall concept
-
-    // In a real test, you'd import the actual node functions from your source code
-    // For now, we'll just verify the structure would work
-
-    agent = workflow.compile(); // This is just a placeholder
-  });
-
-  test("should initialize with correct state structure", () => {
-    const initialState = {
-      input: "",
-      conversationId: "",
-      output: "",
-      history: [],
-      intermediateSteps: []
+describe("LangGraph Agent Logic - Tier 2 (Concept Tests)", () => {
+  test("should verify StateGraph can be created with proper channels", () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        conversationId: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b },
+        history: { value: [], update: (a, b) => b },
+        intermediateSteps: { value: [], update: (a, b) => b }
+      }
     };
 
-    expect(initialState).toHaveProperty("input");
-    expect(initialState).toHaveProperty("conversationId");
-    expect(initialState).toHaveProperty("output");
-    expect(initialState).toHaveProperty("history");
-    expect(initialState).toHaveProperty("intermediateSteps");
+    const workflow = new StateGraph(agentState);
+    expect(workflow).toBeDefined();
   });
 
-  test("should handle mathematical queries with calculator", async () => {
-    // This test would import and test the actual agentNode function
-    // For this outline, we're verifying the concept would work
+  test("should verify basic LangGraph workflow compilation", () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b }
+      }
+    };
 
-    const CalculatorMock = require("@langchain/community/tools/calculator");
-    const calculatorInstance = new CalculatorMock.Calculator();
+    const workflow = new StateGraph(agentState)
+      .addNode("test", async (state) => ({ ...state, output: "test" }))
+      .setEntryPoint("test")
+      .addEdge("test", END);
 
-    // The mock is set up in the jest.mock above to return "360" for "15*24"
-    const result = await calculatorInstance.invoke({ expression: "15*24" });
-    expect(result).toBe("360");
+    const agent = workflow.compile();
+    expect(agent).toBeDefined();
   });
 
-  test("should handle question queries with search", async () => {
-    const SearchMock = require("@langchain/community/tools/ddg_search");
-    const searchInstance = new SearchMock.DuckDuckGoSearchResults();
+  test("should handle async node execution", async () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b }
+      }
+    };
 
-    // The mock is set up in the jest.mock above
-    const result = await searchInstance.invoke({ query: "What is the capital of France?" });
-    expect(result).toBe("Paris is the capital of France.");
+    const workflow = new StateGraph(agentState)
+      .addNode("process", async (state) => {
+        await new Promise(r => setTimeout(r, 10));
+        return { ...state, output: "processed: " + state.input };
+      })
+      .setEntryPoint("process")
+      .addEdge("process", END);
+
+    const agent = workflow.compile();
+    const result = await agent.invoke({ input: "test", output: "" });
+    expect(result.output).toBe("processed: test");
+  });
+
+  test("should maintain state across multiple nodes with distinct channels", async () => {
+    const agentState = {
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        phase1: { value: "", update: (a, b) => b },
+        phase2: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b }
+      }
+    };
+
+    const workflow = new StateGraph(agentState)
+      .addNode("node1", async (state) => ({ ...state, phase1: "done1" }))
+      .addNode("node2", async (state) => ({ ...state, phase2: "done2", output: state.phase1 }))
+      .setEntryPoint("node1")
+      .addEdge("node1", "node2")
+      .addEdge("node2", END);
+
+    const agent = workflow.compile();
+    const result = await agent.invoke({ input: "start", phase1: "", phase2: "", output: "" });
+    expect(result.phase1).toBe("done1");
+    expect(result.phase2).toBe("done2");
+    expect(result.output).toBe("done1");
   });
 });

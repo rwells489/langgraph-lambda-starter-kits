@@ -19,15 +19,21 @@ describe("LangGraph Agent Logic", () => {
   let agent;
 
   beforeEach(() => {
-    // Recreate the agent for each test
+    // Recreate the agent for each test - matches the actual handler's error handling
     const workflow = new StateGraph({
-      input: "",
-      output: ""
+      channels: {
+        input: { value: "", update: (a, b) => b },
+        output: { value: "", update: (a, b) => b }
+      }
     })
     .addNode("calculate", async (state) => {
       const calculator = new Calculator();
-      const result = await calculator.invoke({ expression: state.input });
-      return { ...state, output: result };
+      try {
+        const result = await calculator.invoke({ expression: state.input });
+        return { ...state, output: result };
+      } catch (error) {
+        return { ...state, output: `Error: ${error.message}` };
+      }
     })
     .setEntryPoint("calculate")
     .addEdge("calculate", END);
