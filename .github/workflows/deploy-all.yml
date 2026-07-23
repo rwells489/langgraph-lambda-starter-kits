@@ -1,0 +1,222 @@
+name: Deploy All Tiers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tier-1-calculator-agent/**'
+      - 'tier-2-memory-agent/**'
+      - 'tier-3-multi-agent/**'
+      - '.github/workflows/deploy-all.yml'
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Which tier to deploy (1, 2, 3, or all)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - '1'
+          - '2'
+          - '3'
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: '18'
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tier:
+          - tier-1-calculator-agent
+          - tier-2-memory-agent
+          - tier-3-multi-agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.tier }}/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd ${{ matrix.tier }}
+          npm ci
+
+      - name: Run tests
+        run: |
+          cd ${{ matrix.tier }}
+          npm test
+
+      - name: Check for vulnerabilities
+        run: |
+          cd ${{ matrix.tier }}
+          npm audit --audit-level=high || true
+
+  deploy-tier-1:
+    name: Deploy Tier 1 (Calculator Agent)
+    needs: lint-and-test
+    if: github.event.inputs.tier == 'all' || github.event.inputs.tier == '1' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          version: latest
+
+      - name: Deploy Tier 1
+        run: |
+          cd tier-1-calculator-agent
+          sam build --use-container
+          sam deploy \
+            --stack-name langgraph-tier1-${{ github.event.inputs.environment || 'dev' }} \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides Environment=${{ github.event.inputs.environment || 'dev' }}
+
+      - name: Get API URL
+        run: |
+          cd tier-1-calculator-agent
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name langgraph-tier1-${{ github.event.inputs.environment || 'dev' }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`GraphHandlerApi`].OutputValue' \
+            --output text)
+          echo "Tier 1 API URL: $API_URL"
+          echo "TIER1_API_URL=$API_URL" >> $GITHUB_ENV
+
+  deploy-tier-2:
+    name: Deploy Tier 2 (Memory Agent)
+    needs: lint-and-test
+    if: github.event.inputs.tier == 'all' || github.event.inputs.tier == '2' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          version: latest
+
+      - name: Deploy Tier 2
+        run: |
+          cd tier-2-memory-agent
+          sam build --use-container
+          sam deploy \
+            --stack-name langgraph-tier2-${{ github.event.inputs.environment || 'dev' }} \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides Environment=${{ github.event.inputs.environment || 'dev' }}
+
+      - name: Get API URL
+        run: |
+          cd tier-2-memory-agent
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name langgraph-tier2-${{ github.event.inputs.environment || 'dev' }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`GraphHandlerApi`].OutputValue' \
+            --output text)
+          echo "Tier 2 API URL: $API_URL"
+          echo "TIER2_API_URL=$API_URL" >> $GITHUB_ENV
+
+  deploy-tier-3:
+    name: Deploy Tier 3 (Multi-Agent)
+    needs: lint-and-test
+    if: github.event.inputs.tier == 'all' || github.event.inputs.tier == '3' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          version: latest
+
+      - name: Deploy Tier 3
+        run: |
+          cd tier-3-multi-agent
+          sam build --use-container
+          sam deploy \
+            --stack-name langgraph-tier3-${{ github.event.inputs.environment || 'dev' }} \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides Environment=${{ github.event.inputs.environment || 'dev' }}
+
+      - name: Get API URL
+        run: |
+          cd tier-3-multi-agent
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name langgraph-tier3-${{ github.event.inputs.environment || 'dev' }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`GraphHandlerApi`].OutputValue' \
+            --output text)
+          echo "Tier 3 API URL: $API_URL"
+          echo "TIER3_API_URL=$API_URL" >> $GITHUB_ENV
+
+  notify:
+    name: Deployment Summary
+    needs: [deploy-tier-1, deploy-tier-2, deploy-tier-3]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier | Status | Stack |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 1 (Calculator) | ${{ needs.deploy-tier-1.result }} | langgraph-tier1-${{ github.event.inputs.environment || 'dev' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 2 (Memory) | ${{ needs.deploy-tier-2.result }} | langgraph-tier2-${{ github.event.inputs.environment || 'dev' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 3 (Multi-Agent) | ${{ needs.deploy-tier-3.result }} | langgraph-tier3-${{ github.event.inputs.environment || 'dev' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY

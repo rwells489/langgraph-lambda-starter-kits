@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  LangGraph Lambda Starter Kit - Tier 1
+  A simple LangGraph agent that performs calculations using AWS Lambda.
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 1024
+    Runtime: nodejs18.x
+    Handler: src/handlers/graph-handler.handler
+
+Resources:
+  GraphHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /calculate
+            Method: post
+
+Outputs:
+  GraphHandlerApi:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/calculate/"
+  GraphHandlerFunction:
+    Description: "LangGraph Lambda Function ARN"
+    Value: !GetAtt GraphHandlerFunction.Arn
+  GraphHandlerFunctionIamRole:
+    Description: "Implicit IAM Role created for the function"
+    Value: !GetAtt GraphHandlerFunctionRole.Arn

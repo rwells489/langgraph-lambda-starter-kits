@@ -1,0 +1,35 @@
+{
+  "name": "langgraph-lambda-starter-tier2",
+  "version": "1.0.0",
+  "description": "LangGraph agent with memory (DynamoDB) and multiple tools on AWS Lambda",
+  "main": "src/handlers/graph-handler.js",
+  "scripts": {
+    "build": "echo \"No build step required for this starter\"",
+    "deploy": "sam deploy --guided",
+    "deploy:prod": "sam deploy --config-file samconfig.toml --parameter-overrides Environment=prod",
+    "invoke-local": "sam local invoke GraphHandlerFunction --event events/event.json",
+    "logs": "sam logs -n GraphHandlerFunction --tail",
+    "test": "jest --verbose",
+    "test:watch": "jest --watch"
+  },
+  "keywords": [
+    "langgraph",
+    "aws-lambda",
+    "serverless",
+    "ai-agent",
+    "dynamodb",
+    "sam"
+  ],
+  "author": "Raina Wells",
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/langgraph": "^0.0.30",
+    "@langchain/community": "^0.0.42",
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "aws-sdk-client-mock": "^1.0.0"
+  }
+}

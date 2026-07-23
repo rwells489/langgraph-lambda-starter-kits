@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  LangGraph Lambda Starter Kit - Tier 3
+  A LangGraph agent with multi-agent patterns, human-in-the-loop, and artifact storage on AWS Lambda.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 2048
+    Runtime: nodejs18.x
+    Handler: src/handlers/graph-handler.handler
+    Environment:
+      Variables:
+        CONVERSATION_TABLE: !Ref ConversationsTable
+        ARTIFACT_BUCKET: !Ref ArtifactBucket
+
+Resources:
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: LangGraphConversations
+      AttributeDefinitions:
+        - AttributeName: conversationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: conversationId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-artifacts-${AWS::Region}"
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+            NoncurrentVersionExpirationInDays: 30
+
+  GraphHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Policies:
+        # Allow the function to interact with DynamoDB
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConversationsTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref ConversationsTable
+        # Allow the function to interact with S3
+        - S3ReadPolicy:
+            BucketName: !Ref ArtifactBucket
+        - S3WritePolicy:
+            BucketName: !Ref ArtifactBucket
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /chat
+            Method: post
+
+Outputs:
+  GraphHandlerApi:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/chat/"
+  GraphHandlerFunction:
+    Description: "LangGraph Lambda Function ARN"
+    Value: !GetAtt GraphHandlerFunction.Arn
+  GraphHandlerFunctionIamRole:
+    Description: "Implicit IAM Role created for the function"
+    Value: !GetAtt GraphHandlerFunctionRole.Arn
+  ConversationsTableName:
+    Description: "Name of the DynamoDB table for conversation memory"
+    Value: !Ref ConversationsTable
+  ArtifactBucketName:
+    Description: "Name of the S3 bucket for storing agent artifacts"
+    Value: !Ref ArtifactBucket
